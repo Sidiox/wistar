@@ -26,6 +26,12 @@ from urllib2 import URLError
 
 from wistar import configuration
 
+import openstack
+from openstack.config import loader
+from openstack import utils 
+
+import openstackUtils2
+
 # OpenStack component URLs
 # _glance_url = ':9292/v1'
 _analytics_url = ':8081'
@@ -62,6 +68,8 @@ def connect_to_openstack():
     """
 
     logger.debug("--- connect_to_openstack ---")
+
+    return openstackUtils2.connect_to_openstack()
 
     logger.debug('verify configuration')
 
@@ -102,7 +110,7 @@ def connect_to_openstack():
               "password": {
                 "user": {
                   "name": "%s",
-                  "domain": { "id": "default" },
+                  "domain": { "id": "%s" },
                   "password": "%s"
                 }
               }
@@ -110,18 +118,22 @@ def connect_to_openstack():
               "scope": {
                     "project": {
                         "domain": {
-                            "id": "default"
+                            "id": "%s"
                         },
-                        "name": "admin"
+                        "name": "%s"
                     }
                 }
             }
         }
-        """ % (configuration.openstack_user, configuration.openstack_password)
+        """ % (configuration.openstack_user,
+               configuration.openstack_domain,
+               configuration.openstack_password,
+               configuration.openstack_domain,
+               configuration.openstack_project)
 
     try:
         _auth_token = ""
-        request = urllib2.Request("http://" + configuration.openstack_host + _auth_url)
+        request = urllib2.Request(http_or_https() + configuration.openstack_host + _auth_url)
         request.add_header("Content-Type", "application/json")
         request.add_header("charset", "UTF-8")
         request.add_header("Content-Length", len(_auth_json))
@@ -164,7 +176,7 @@ def get_project_auth_token(project):
               "password": {
                 "user": {
                   "name": "%s",
-                  "domain": { "id": "default" },
+                  "domain": { "id": "%s" },
                   "password": "%s"
                 }
               }
@@ -172,17 +184,21 @@ def get_project_auth_token(project):
               "scope": {
                     "project": {
                         "domain": {
-                            "id": "default"
+                            "id": "%s"
                         },
                         "name": "%s"
                     }
                 }
             }
         }
-        """ % (configuration.openstack_user, configuration.openstack_password, project)
+        """ % (configuration.openstack_user,
+               configuration.openstack_domain,
+               configuration.openstack_password,
+               configuration.openstack_domain,
+               configuration.openstack_project)
 
     try:
-        request = urllib2.Request("http://" + configuration.openstack_host + _auth_url)
+        request = urllib2.Request(http_or_https() + configuration.openstack_host + _auth_url)
         request.add_header("Content-Type", "application/json")
         request.add_header("charset", "UTF-8")
         request.add_header("Content-Length", len(_auth_json))
@@ -203,7 +219,8 @@ def get_project_id(project_name):
     :return: string UUID or None
     """
 
-    logger.debug("--- get_project_id ---")
+    logger.debug("--- get_project_id ---" + project_name)
+    return openstackUtils2.get_project_id(project_name)
 
     projects_url = create_os_url('/projects')
     projects_string = do_get(projects_url)
@@ -365,6 +382,10 @@ def get_consumed_management_ips():
     get all reserved management ips
     :return: list of dicts
     """
+
+
+    return open
+    Utils2.get_consumed_management_ips()
     consumed_ips = list()
     ports_string = get_neutron_ports_for_network(configuration.openstack_mgmt_network)
     if ports_string is None:
@@ -394,6 +415,8 @@ def get_glance_image_list():
     :return: list of json objects from glance /images URL filtered with only shared or public images
     """
     logger.debug("--- get_glance_image_list ---")
+
+    return openstackUtils2.get_glance_image_list()
 
     url = create_glance_url("/images")
     image_list_string = do_get(url)
@@ -432,6 +455,7 @@ def get_glance_image_detail(glance_id):
     :return: json response from glance /images/glance_id URL
     """
     logger.debug("--- get_glance_image_detail ---")
+    return openstackUtils2.get_glance_image_detail(glance_id)
 
     url = create_glance_url("/images/%s" % glance_id)
     image_string = do_get(url)
@@ -447,6 +471,7 @@ def get_glance_image_detail_by_name(image_name):
     :return: json response from glance /images?name=image_name URL or None
     """
     logger.debug("--- get_glance_image_detail ---")
+    return openstackUtils2.get_glance_image_detail_by_name(image_name)
 
     url = create_glance_url("/images?name=%s" % image_name)
     image_string = do_get(url)
@@ -478,6 +503,7 @@ def get_image_id_for_name(image_name):
     :return: glance id or None on failure
     """
     logger.debug("--- get_image_id_for_name ---")
+    return openstackUtils2.get_image_id_for_name(image_name)
 
     image_detail = get_glance_image_detail_by_name(image_name)
     if 'name' in image_detail and image_detail['name'] == image_name:
@@ -494,6 +520,7 @@ def get_stack_details(stack_name):
     :return: stack object or None if not found!
     """
     logger.debug("--- get_stack_details ---")
+    return openstackUtils2.get_stack_details(stack_name)
 
     url = create_heat_url("/%s/stacks" % _tenant_id)
 
@@ -532,6 +559,8 @@ def delete_stack(stack_name):
     """
     logger.debug("--- delete_stack ---")
 
+    return openstackUtils2.delete_stack(stack_name)
+
     stack_details = get_stack_details(stack_name)
     if stack_details is None:
         return None
@@ -547,6 +576,7 @@ def get_nova_flavors(project_name):
     :return: JSON encoded string
     """
     logger.debug("--- get_nova_flavors ---")
+    return openstackUtils2.get_nova_flavors(project_name)
     project_id = get_project_id(project_name)
     url = create_nova_url("/" + project_id + '/flavors/detail')
     return do_get(url)
@@ -563,6 +593,7 @@ def get_minimum_flavor_for_specs(project_name, cpu, ram, disk):
     """
 
     logger.debug("checking: " + str(cpu) + " " + str(ram) + " " + str(disk))
+    return openstackUtils2.get_minimum_flavor_for_specs(project_name, cpu, ram, disk)
 
     # create an emergency flavor so we have something to return in case we can't connect to openstack
     # or some other issue prevents us from determining the right thing to do
@@ -661,6 +692,8 @@ def create_stack(stack_name, template_string):
     :return: JSON response from HEAT-API or None on failure
     """
     logger.debug("--- create_stack ---")
+    return openstackUtils2.create_stack(stack_name, template_string)
+
 
     url = create_heat_url("/" + str(_tenant_id) + "/stacks")
     data = '''{
@@ -728,23 +761,23 @@ def get_nova_serial_console(instance_name):
 
 # URL Utility functions
 def create_glance_url(url):
-    return "http://" + configuration.openstack_host + _glance_url + url
+    return http_or_https() + configuration.openstack_glance + _glance_url + url
 
 
 def create_neutron_url(url):
-    return "http://" + configuration.openstack_host + _neutron_url + url
+    return http_or_https() + configuration.openstack_host + _neutron_url + url
 
 
 def create_os_url(url):
-    return "http://" + configuration.openstack_host + _os_url + url
+    return http_or_https() + configuration.openstack_host + _os_url + url
 
 
 def create_heat_url(url):
-    return "http://" + configuration.openstack_host + _heat_url + url
+    return http_or_https() + configuration.openstack_host + _heat_url + url
 
 
 def create_nova_url(url):
-    return "http://" + configuration.openstack_host + _nova_url + url
+    return http_or_https + configuration.openstack_host + _nova_url + url
 
 
 # Utility REST functions below

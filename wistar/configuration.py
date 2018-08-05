@@ -66,6 +66,15 @@ use_openstack = False
 # some version of openstack use '/dashboard', '/horizon', or '/'
 openstack_horizon_url = "http://10.10.10.10"
 
+# Selects the method to authenticate against openstack
+# can be "manual" or "auto"
+# Manual uses the configuration data in this configuration file
+# Auto uses the openstacksdk to search for authenication details in clouds.yaml files
+# On "auto", it uses the openstack_cloud variable to select to cloud in the clouds.yaml
+# https://docs.openstack.org/openstacksdk/latest/user/guides/connect_from_config.html
+openstack_mode = "auto"
+openstack_cloud = "openstack"
+
 # authentication parameters
 openstack_host = '10.10.10.10'
 openstack_user = 'admin'
@@ -73,6 +82,8 @@ openstack_password = 'SECRET'
 
 # project under which to place all topologies/stacks
 openstack_project = 'admin'
+# The region for the cloud
+openstack_region = "RegionOne"
 
 openstack_mgmt_network = 'wistar_mgmt'
 openstack_external_network = 'public-br-eth0'
