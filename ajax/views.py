@@ -585,8 +585,21 @@ def refresh_openstack_deployment_status(request, topology_id):
     stack_details = openstackUtils.get_stack_details(stack_name)
     stack_resources = dict()
     logger.debug(stack_details)
-    if stack_details is not None and 'stack_status' in stack_details and 'COMPLETE' in stack_details["stack_status"]:
+
+    if stack_details is not None and "stack_status" in stack_details and "COMPLETE" in stack_details["stack_status"]:
         stack_resources = openstackUtils.get_stack_resources(stack_name, stack_details["id"])
+
+    if stack_details is not None and 'status' in stack_details and 'COMPLETE' in stack_details["status"]:
+        # This fixes compatbility with newer resource responses which have different fields
+        # Simply readd the data with the old names
+        stack_resources = openstackUtils.get_stack_resources(stack_name, stack_details["id"])
+
+        stack_details["stack_status"] = stack_details["status"]
+        stack_details["stack_status_reason"] = stack_details["status_reason"]
+
+        for resource in stack_resources["resources"]:
+            resource["resource_name"] = resource["name"]
+            resource["resource_status"] = resource["status"]
 
     if hasattr(configuration, 'openstack_horizon_url'):
         horizon_url = configuration.openstack_horizon_url
@@ -886,27 +899,36 @@ def redeploy_topology(request):
         return render(request, 'ajax/ajaxError.html', {'error': "Topology doesn't exist"})
 
     try:
-        domains = libvirtUtils.get_domains_for_topology(topology_id)
-        config = wistarUtils.load_config_from_topology_json(topo.json, topology_id)
+        if configuration.deployment_backend == "openstack":
+            # Updates the stack with the new heat template
+            # This should allow for the hotplugging of connections
+            # Currently doesn't do anything
+            #FIXME
+            update_stack(request, topology_id)
+        
+        elif configuration.deployment_backend == "kvm":
 
-        logger.debug('checking for orphaned domains first')
-        # find domains we no longer need
-        for d in domains:
-            logger.debug('checking domain: %s' % d['name'])
-            found = False
-            for config_device in config["devices"]:
-                if config_device['name'] == d['name']:
-                    found = True
-                    continue
+            domains = libvirtUtils.get_domains_for_topology(topology_id)
+            config = wistarUtils.load_config_from_topology_json(topo.json, topology_id)
 
-            if not found:
-                logger.info("undefine domain: " + d["name"])
-                source_file = libvirtUtils.get_image_for_domain(d["uuid"])
-                if libvirtUtils.undefine_domain(d["uuid"]):
-                    if source_file is not None:
-                        osUtils.remove_instance(source_file)
+            logger.debug('checking for orphaned domains first')
+            # find domains we no longer need
+            for d in domains:
+                logger.debug('checking domain: %s' % d['name'])
+                found = False
+                for config_device in config["devices"]:
+                    if config_device['name'] == d['name']:
+                        found = True
+                        continue
 
-                    osUtils.remove_cloud_init_seed_dir_for_domain(d['name'])
+                if not found:
+                    logger.info("undefine domain: " + d["name"])
+                    source_file = libvirtUtils.get_image_for_domain(d["uuid"])
+                    if libvirtUtils.undefine_domain(d["uuid"]):
+                        if source_file is not None:
+                            osUtils.remove_instance(source_file)
+
+                        osUtils.remove_cloud_init_seed_dir_for_domain(d['name'])
 
     except Exception as e:
         logger.debug("Caught Exception in redeploy")
@@ -1475,6 +1497,7 @@ def deploy_stack(request, topology_id):
     except ObjectDoesNotExist:
         return render(request, 'error.html', {'error': "Topology not found!"})
 
+    heat_template =None
     try:
         # generate a stack name
         # FIXME should add a check to verify this is a unique name
@@ -1506,6 +1529,11 @@ def deploy_stack(request, topology_id):
         logger.debug(str(e))
         return render(request, 'error.html', {'error': str(e)})
 
+def update_stack(request, topology_id):
+    """
+    Updates an already existing stack with a new template
+    """
+    pass
 
 def delete_stack(request, topology_id):
     """

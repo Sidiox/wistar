@@ -375,3 +375,21 @@ def get_stack_details(stack_name):
 
     else:
         return result.to_dict()
+
+def get_stack_resources(stack_name, stack_id):
+    """
+    Get all the resources for this Stack
+    :param stack_name: name of stack
+    :param stack_id: id of stack - use get_stack_details to retrieve this
+    :return: json response from HEAT API
+    """
+
+    conn = create_connection()
+
+    stack = conn.orchestration.get_stack(stack_id)
+
+    resources = conn.orchestration.resources(stack)
+    logger.debug("Got resources")
+    resources_list = [r.to_dict() for r in resources]
+    logger.debug(resources_list)
+    return {"resources": resources_list}
