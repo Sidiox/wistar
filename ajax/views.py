@@ -885,6 +885,8 @@ def multi_clone_topology(request):
 
 
 def redeploy_topology(request):
+
+    logger.debug("---redeploy_topology---")
     required_fields = set(['json', 'topologyId'])
     if not required_fields.issubset(request.POST):
         return render(request, 'ajax/ajaxError.html', {'error': "No Topology Id in request"})
@@ -901,8 +903,8 @@ def redeploy_topology(request):
     try:
         if configuration.deployment_backend == "openstack":
             # Updates the stack with the new heat template
-            # This should allow for the hotplugging of connections
-            # Currently doesn't do anything
+            # Should check first if the stack exists
+            # if the stack doesn't exist, just switch to deployment instead
             #FIXME
             update_stack(request, topology_id)
         
@@ -935,13 +937,14 @@ def redeploy_topology(request):
         logger.debug(str(e))
         return render(request, 'ajax/ajaxError.html', {'error': str(e)})
 
-    # forward onto deploy topo
-    try:
-        inline_deploy_topology(config)
-    except Exception as e:
-        logger.debug("Caught Exception in inline_deploy")
-        logger.debug(str(e))
-        return render(request, 'ajax/ajaxError.html', {'error': str(e)})
+    # forward onto deploy topoloy if this is a kvm topology
+    if configuration.deployment_backend == "kvm":
+        try:
+            inline_deploy_topology(config)
+        except Exception as e:
+            logger.debug("Caught Exception in inline_deploy")
+            logger.debug(str(e))
+            return render(request, 'ajax/ajaxError.html', {'error': str(e)})
 
     return refresh_deployment_status(request)
 
@@ -1533,7 +1536,31 @@ def update_stack(request, topology_id):
     """
     Updates an already existing stack with a new template
     """
-    pass
+    try:
+        topology = Topology.objects.get(pk=topology_id)
+    except ObjectDoesNotExist:
+        return render(request, 'error.html', {'error': "Topology not found!"})
+    try: 
+        stack_name = topology.name.replace(' ', '_')
+        # let's parse the json and convert to simple lists and dicts
+        logger.debug("loading config")
+        config = wistarUtils.load_config_from_topology_json(topology.json, topology_id)
+        logger.debug("Config is loaded")
+        heat_template = wistarUtils.get_heat_json_from_topology_config(config, stack_name)
+        logger.debug("heat template created")
+        if not openstackUtils.connect_to_openstack():
+            return render(request, 'error.html', {'error': "Could not connect to Openstack"})
+
+        logger.debug(openstackUtils.update_stack(stack_name, heat_template))
+
+        return HttpResponseRedirect('/topologies/' + topology_id + '/')
+
+    except Exception as e:
+        logger.debug("Caught Exception in update stack")
+        logger.debug(str(e))
+
+        return render(request, 'error.html', {'error': str(e)})
+
 
 def delete_stack(request, topology_id):
     """

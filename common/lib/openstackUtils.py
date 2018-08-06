@@ -344,6 +344,32 @@ def create_stack(stack_name, template_string):
     logger.debug(result)
     return result
 
+def update_stack(stack_name, template_string):
+    """
+    Updates the heat template associated with a stack
+    This triggers a rebuild of the associated resources so may break certain topologies
+    """
+
+    connection = create_connection()
+
+    template = json.loads(template_string)
+
+    stack = connection.orchestration.find_stack(stack_name)
+
+
+    if stack is None:
+        # Stack has been deleted or never deployed!
+        return None
+    else:
+        heat_data = {}
+        heat_data["template"] = template
+
+        result = connection.orchestration.update_stack(stack, **heat_data)
+        logger.debug(result)
+
+    return result
+
+
 def delete_stack(stack_name):
     """
     Deletes a stack from OpenStack
