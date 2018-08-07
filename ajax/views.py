@@ -1552,7 +1552,7 @@ def update_stack(request, topology_id):
             return render(request, 'error.html', {'error': "Could not connect to Openstack"})
 
 
-        result = openstackUtils.update(stack_stack, heat_template)
+        result = openstackUtils.update_stack(stack_name, heat_template)
         if result == None:
             logger.debug("Can't update stack since it doesn't exist, deploying")
             openstackUtils.create_stack(stack_name, heat_template)
