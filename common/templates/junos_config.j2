@@ -33,6 +33,11 @@ system {
         }
     }
 }
+chassis {                               
+    fpc 0 {                             
+        lite-mode;                      
+    }                                   
+}
 interfaces {
     {{ config.mgmt_interface }} {
         unit 0 {
