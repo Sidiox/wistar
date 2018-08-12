@@ -588,11 +588,17 @@ def refresh_openstack_deployment_status(request, topology_id):
 
     if stack_details is not None and "stack_status" in stack_details and "COMPLETE" in stack_details["stack_status"]:
         stack_resources = openstackUtils.get_stack_resources(stack_name, stack_details["id"])
+        # No attempt being made to get the physical status, since this is for legacy Openstack
+        # And I do not know what field names are
+        for resource in stack_resources:
+            resource["physical_status"] = None
 
     if stack_details is not None and 'status' in stack_details and 'COMPLETE' in stack_details["status"]:
         # This fixes compatbility with newer resource responses which have different fields
         # Simply readd the data with the old names
-        stack_resources = openstackUtils.get_stack_resources(stack_name, stack_details["id"])
+
+        # Also get the physical status
+        stack_resources = openstackUtils.get_stack_resources(stack_name, stack_details["id"], resource_status=True)
 
         stack_details["stack_status"] = stack_details["status"]
         stack_details["stack_status_reason"] = stack_details["status_reason"]
@@ -724,6 +730,24 @@ def manage_domain(request):
     else:
         return render(request, 'ajax/ajaxError.html', {'error': "Unknown Parameters in POST!"})
 
+def manage_instance(request):
+    """
+    This function manages basic interactions with the OS::Nova::Server
+    resources in the deployed openstack stack
+    The instanceId corresponds to the OS::Nova::Server instance
+    """
+    required_fields = set(['topologyId', 'action', 'instanceId'])
+
+    if not required_fields.issubset(request.POST):
+        return render(request, 'ajax/ajaxError.html', {'error': "Invalid Parameters in POST"})
+
+    instance_id = request.POST['instanceId']
+    action = request.POST['action']
+    topology_id = request.POST["topologyId"]
+
+    openstackUtils.manage_instance(instance_id, action)
+
+    return refresh_openstack_deployment_status(request, topology_id)
 
 def manage_network(request):
     required_fields = set(['networkName', 'action', 'topologyId'])

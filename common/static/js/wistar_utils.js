@@ -61,6 +61,44 @@
             alert('Could not perform request!');
         });
     }
+
+    // Similar to the manageDomain function, except for OpenStack instances
+    // Does not immediately change the page, unlike the domain one
+    // Only a refresh of the status will show if an instance has been turned off
+    function manageInstance(action, instanceId, topoId) {
+        var doc = jQuery(document.documentElement);
+        doc.css('cursor', 'progress');
+
+        var doc = jQuery(document.documentElement);
+        doc.css('cursor', 'progress');
+       
+        if (action == "stop") {
+            if (typeof s != 'undefined') {
+                s.setBootState("down");
+            }
+
+            if (! confirm("This will power off the instance ungracefully!")) {
+                doc.css('cursor', '');
+                return false;
+            }
+        } 
+        var url = '/ajax/manageInstance/';
+        var params = {
+            'topologyId' : topoId,
+            'instanceId' : instanceId,
+            'action' : action
+        };
+        var post = jQuery.post(url, params, function(response) {
+            var content = jQuery(response);
+            jQuery('#deploymentStatus').empty().append(content);
+        });
+        post.fail(function() {
+            alert('Could not perform request!');
+        });
+        post.always(function() {
+            doc.css('cursor', '');
+        });
+    }
    
     function manageDomain(action, domainId, topoId) {
         var doc = jQuery(document.documentElement);

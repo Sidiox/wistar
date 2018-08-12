@@ -107,6 +107,24 @@ def upload_image_to_glance(name, image_file_path):
 
     connection.images.upload_image(**image_attrs)
 
+def manage_instance(instance_id, action):
+    """
+    Some basic interactions with server instances
+    """
+
+    conn = create_connection()
+
+    server_instance = conn.compute.get_server(instance_id)
+
+    if action == "stop" and server_instance.status == "ACTIVE":
+        # Only attempt to stop if it's active, don't try to interact with a non stable instance
+        conn.compute.stop_server(instance_id)
+    elif action == "start" and server_instance.status == "SHUTOFF":
+        # Only attempt to start if it's properly shut off
+        conn.compute.start_server(instance_id)
+    elif action == "reboot" and server_instance.status == "ACTIVE":
+        conn.compute.reboot_server(instance_id, "SOFT")
+
 
 def get_nova_flavors(project_name):
     connection = create_connection()
@@ -402,11 +420,12 @@ def get_stack_details(stack_name):
     else:
         return result.to_dict()
 
-def get_stack_resources(stack_name, stack_id):
+def get_stack_resources(stack_name, stack_id, resource_status=False):
     """
     Get all the resources for this Stack
     :param stack_name: name of stack
     :param stack_id: id of stack - use get_stack_details to retrieve this
+    :param resource_status: Also get the physical_status of the OS::Nova::Server instances
     :return: json response from HEAT API
     """
 
@@ -418,4 +437,24 @@ def get_stack_resources(stack_name, stack_id):
     logger.debug("Got resources")
     resources_list = [r.to_dict() for r in resources]
     logger.debug(resources_list)
+    if resource_status == False:
+        return {"resources": resources_list}
+
+    #Get status of the resources as well
+
+    for resource in resources_list:
+        # Only get the status for the OS::Nova::Server 
+        if resource["resource_type"] == "OS::Nova::Server" and "COMPLETE" in resource["status"]:
+
+            status = conn.compute.get_server(resource["physical_resource_id"]).status
+
+            # Add the key for the status of the physical status
+            resource["physical_status"] = status
+        else:
+            # Either it's not Nova or not yet completed
+            resource["physical_status"] = None
+    
+    logger.debug("Also gotten the status")
+    logger.debug(resources_list)
+
     return {"resources": resources_list}

@@ -57,9 +57,19 @@ is_deployed = true;
                         {{ resource.resource_name }}
                      </a>
                 </td>
-                <td colspan="2" style="white-space: nowrap;">
-                        {% if 'COMPLETE' in resource.resource_status %}
-                        <div class="status_green">&#10003;</div>
+                <td colspan="3" style="white-space: nowrap;">
+                        {% if 'COMPLETE' in resource.resource_status and resource.physical_status == "ACTIVE" %}
+                        <div class="status_green">
+                            <a href="#" onclick="javascript: manageInstance('stop', '{{ resource.physical_resource_id }}', '{{ topology_id }}');"
+                            title="Request shutdown in OpenStack">
+                                &#10003;</a>
+                        
+                        </div>
+                        &nbsp;
+                        <div class="status_grey">
+                            <a href="#" onclick="javascript: manageInstance('reboot', '{{ resource.physical_resource_id }}', '{{ topology_id }}');"
+                            title="Request reboot in OpenStack">&#x21bb;</a>
+                        </div>
                         &nbsp;
                         <a href="#"
                             onclick="javascript: window.open('{{ openstack_horizon_url }}/project/instances/{{ resource.physical_resource_id }}/?tab=instance_details__console');"
@@ -67,6 +77,24 @@ is_deployed = true;
                             >
                             <img src="{% static 'images/console.png' %}" width="20px" height="20px"/>
                         </a>
+                        {% elif 'COMPLETE' in resource.resource_status and resource.physical_status == "SHUTOFF" %}
+                        <div class="status_red">
+                            <a href="#" onclick="javascript: manageInstance('start', '{{ resource.physical_resource_id }}', '{{ topology_id }}');"
+                                title="Request start up in OpenStack">
+                            &#9661;</div>
+                        &nbsp;
+                        {% elif 'COMPLETE' in resource.resource_status and resource.physical_status == "REBOOT" %}
+                        <div class="status_red">&#x21bb;</div>
+                        &nbsp;
+                        <a href="#"
+                            onclick="javascript: window.open('{{ openstack_horizon_url }}/project/instances/{{ resource.physical_resource_id }}/?tab=instance_details__console');"
+                            title="Launch Console"
+                            >
+                            <img src="{% static 'images/console.png' %}" width="20px" height="20px"/>
+                        </a>
+                        <!-- Legacy addition, couldn't get physical status so no interaction buttons -->
+                        {% elif 'COMPLETE' in resource.resource_status and resource.physical_status == None %}
+                        <div class="status_green">&#10003;</div>&nbsp;
                         {% else %}
                         <div class="status_red">&#9661;</div>
                         &nbsp;
