@@ -49,6 +49,7 @@ urlpatterns = [
     url(r'^manageDomain/$', views.manage_domain, name='manageDomain'),
     url(r'^manageNetwork/$', views.manage_network, name='manageNetwork'),
     url(r'^manageHypervisor/$', views.manage_hypervisor, name='manage_hypervisor'),
+    url(r'^manageInstance/$', views.manage_instance, name="manageInstance"),
     url(r'^executeCli/$', views.execute_cli, name='executeCli'),
     url(r'^executeLinuxCli/$', views.execute_linux_cli, name='executeLinuxCli'),
     url(r'^launchWebConsole/$', views.launch_web_console, name='launchWebConsole'),

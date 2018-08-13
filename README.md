@@ -20,9 +20,11 @@ Quick Start instructions for KVM deployments:
 
 To get started, you need a server running Ubuntu 14.04 (or some similar flavor) with libvirt, kvm and a few python tools.
 
+You can use the various ansible-playbooks in the extras folder to get an install up and running quickly.
+
 Install the required Ubuntu packages-
 ```
-root@wistar-build:~# apt-get install python-pip python-dev build-essential qemu-kvm libz-dev libvirt-bin socat python-pexpect python-libvirt libxml2-dev libxslt1-dev unzip bridge-utils genisoimage python-netaddr libffi-dev libssl-dev python-markupsafe libxml2-dev libxslt1-dev git mtools dosfstools
+root@wistar-build:~# apt-get install python-pip python-dev build-essential qemu-kvm libz-dev libvirt-bin socat python-pexpect python-libvirt libxml2-dev libxslt1-dev unzip bridge-utils genisoimage python-netaddr libffi-dev libssl-dev python-markupsafe libxml2-dev libxslt1-dev git mtools dosfstools python-openstacksdk
 ```
 
 Install Python packages-

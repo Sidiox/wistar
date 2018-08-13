@@ -70,6 +70,7 @@
       - mtools
       - dosfstools
       - openvswitch-switch
+      - python-openstacksdk
 
   - name: Install Django
     pip:

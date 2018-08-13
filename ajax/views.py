@@ -585,8 +585,27 @@ def refresh_openstack_deployment_status(request, topology_id):
     stack_details = openstackUtils.get_stack_details(stack_name)
     stack_resources = dict()
     logger.debug(stack_details)
-    if stack_details is not None and 'stack_status' in stack_details and 'COMPLETE' in stack_details["stack_status"]:
+
+    if stack_details is not None and "stack_status" in stack_details and "COMPLETE" in stack_details["stack_status"]:
         stack_resources = openstackUtils.get_stack_resources(stack_name, stack_details["id"])
+        # No attempt being made to get the physical status, since this is for legacy Openstack
+        # And I do not know what field names are
+        for resource in stack_resources:
+            resource["physical_status"] = None
+
+    if stack_details is not None and 'status' in stack_details and 'COMPLETE' in stack_details["status"]:
+        # This fixes compatbility with newer resource responses which have different fields
+        # Simply readd the data with the old names
+
+        # Also get the physical status
+        stack_resources = openstackUtils.get_stack_resources(stack_name, stack_details["id"], resource_status=True)
+
+        stack_details["stack_status"] = stack_details["status"]
+        stack_details["stack_status_reason"] = stack_details["status_reason"]
+
+        for resource in stack_resources["resources"]:
+            resource["resource_name"] = resource["name"]
+            resource["resource_status"] = resource["status"]
 
     if hasattr(configuration, 'openstack_horizon_url'):
         horizon_url = configuration.openstack_horizon_url
@@ -711,6 +730,24 @@ def manage_domain(request):
     else:
         return render(request, 'ajax/ajaxError.html', {'error': "Unknown Parameters in POST!"})
 
+def manage_instance(request):
+    """
+    This function manages basic interactions with the OS::Nova::Server
+    resources in the deployed openstack stack
+    The instanceId corresponds to the OS::Nova::Server instance
+    """
+    required_fields = set(['topologyId', 'action', 'instanceId'])
+
+    if not required_fields.issubset(request.POST):
+        return render(request, 'ajax/ajaxError.html', {'error': "Invalid Parameters in POST"})
+
+    instance_id = request.POST['instanceId']
+    action = request.POST['action']
+    topology_id = request.POST["topologyId"]
+
+    openstackUtils.manage_instance(instance_id, action)
+
+    return refresh_openstack_deployment_status(request, topology_id)
 
 def manage_network(request):
     required_fields = set(['networkName', 'action', 'topologyId'])
@@ -872,6 +909,8 @@ def multi_clone_topology(request):
 
 
 def redeploy_topology(request):
+
+    logger.debug("---redeploy_topology---")
     required_fields = set(['json', 'topologyId'])
     if not required_fields.issubset(request.POST):
         return render(request, 'ajax/ajaxError.html', {'error': "No Topology Id in request"})
@@ -886,40 +925,50 @@ def redeploy_topology(request):
         return render(request, 'ajax/ajaxError.html', {'error': "Topology doesn't exist"})
 
     try:
-        domains = libvirtUtils.get_domains_for_topology(topology_id)
-        config = wistarUtils.load_config_from_topology_json(topo.json, topology_id)
+        if configuration.deployment_backend == "openstack":
+            # Updates the stack with the new heat template
+            # Should check first if the stack exists
+            # if the stack doesn't exist, just switch to deployment instead
+            #FIXME
+            update_stack(request, topology_id)
+        
+        elif configuration.deployment_backend == "kvm":
 
-        logger.debug('checking for orphaned domains first')
-        # find domains we no longer need
-        for d in domains:
-            logger.debug('checking domain: %s' % d['name'])
-            found = False
-            for config_device in config["devices"]:
-                if config_device['name'] == d['name']:
-                    found = True
-                    continue
+            domains = libvirtUtils.get_domains_for_topology(topology_id)
+            config = wistarUtils.load_config_from_topology_json(topo.json, topology_id)
 
-            if not found:
-                logger.info("undefine domain: " + d["name"])
-                source_file = libvirtUtils.get_image_for_domain(d["uuid"])
-                if libvirtUtils.undefine_domain(d["uuid"]):
-                    if source_file is not None:
-                        osUtils.remove_instance(source_file)
+            logger.debug('checking for orphaned domains first')
+            # find domains we no longer need
+            for d in domains:
+                logger.debug('checking domain: %s' % d['name'])
+                found = False
+                for config_device in config["devices"]:
+                    if config_device['name'] == d['name']:
+                        found = True
+                        continue
 
-                    osUtils.remove_cloud_init_seed_dir_for_domain(d['name'])
+                if not found:
+                    logger.info("undefine domain: " + d["name"])
+                    source_file = libvirtUtils.get_image_for_domain(d["uuid"])
+                    if libvirtUtils.undefine_domain(d["uuid"]):
+                        if source_file is not None:
+                            osUtils.remove_instance(source_file)
+
+                        osUtils.remove_cloud_init_seed_dir_for_domain(d['name'])
 
     except Exception as e:
         logger.debug("Caught Exception in redeploy")
         logger.debug(str(e))
         return render(request, 'ajax/ajaxError.html', {'error': str(e)})
 
-    # forward onto deploy topo
-    try:
-        inline_deploy_topology(config)
-    except Exception as e:
-        logger.debug("Caught Exception in inline_deploy")
-        logger.debug(str(e))
-        return render(request, 'ajax/ajaxError.html', {'error': str(e)})
+    # forward onto deploy topoloy if this is a kvm topology
+    if configuration.deployment_backend == "kvm":
+        try:
+            inline_deploy_topology(config)
+        except Exception as e:
+            logger.debug("Caught Exception in inline_deploy")
+            logger.debug(str(e))
+            return render(request, 'ajax/ajaxError.html', {'error': str(e)})
 
     return refresh_deployment_status(request)
 
@@ -1475,6 +1524,7 @@ def deploy_stack(request, topology_id):
     except ObjectDoesNotExist:
         return render(request, 'error.html', {'error': "Topology not found!"})
 
+    heat_template =None
     try:
         # generate a stack name
         # FIXME should add a check to verify this is a unique name
@@ -1504,6 +1554,41 @@ def deploy_stack(request, topology_id):
     except Exception as e:
         logger.debug("Caught Exception in deploy")
         logger.debug(str(e))
+        return render(request, 'error.html', {'error': str(e)})
+
+def update_stack(request, topology_id):
+    """
+    Updates an already existing stack with a new template
+    """
+    try:
+        topology = Topology.objects.get(pk=topology_id)
+    except ObjectDoesNotExist:
+        return render(request, 'error.html', {'error': "Topology not found!"})
+    try: 
+        stack_name = topology.name.replace(' ', '_')
+        # let's parse the json and convert to simple lists and dicts
+        logger.debug("loading config")
+        config = wistarUtils.load_config_from_topology_json(topology.json, topology_id)
+        logger.debug("Config is loaded")
+        heat_template = wistarUtils.get_heat_json_from_topology_config(config, stack_name)
+        logger.debug("heat template created")
+        if not openstackUtils.connect_to_openstack():
+            return render(request, 'error.html', {'error': "Could not connect to Openstack"})
+
+
+        result = openstackUtils.update_stack(stack_name, heat_template)
+        if result == None:
+            logger.debug("Can't update stack since it doesn't exist, deploying")
+            openstackUtils.create_stack(stack_name, heat_template)
+        else:
+            logger.debug(result)
+
+        return HttpResponseRedirect('/topologies/' + topology_id + '/')
+
+    except Exception as e:
+        logger.debug("Caught Exception in update stack")
+        logger.debug(str(e))
+
         return render(request, 'error.html', {'error': str(e)})
 
 
