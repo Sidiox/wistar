@@ -97,7 +97,7 @@ def _generate_mac(topology_id):
     return ':'.join(ba)
 
 
-def get_heat_json_from_topology_config(config, project_name='admin'):
+def get_heat_json_from_topology_config(config, project_name='admin', use_volumes=False):
     """
     Generates heat template from the topology configuration object
     use load_config_from_topology_json to get the configuration from the Topology
@@ -154,7 +154,8 @@ def get_heat_json_from_topology_config(config, project_name='admin'):
 
         image_name = image_details["name"]
 
-        image_disk_size = 20
+        # This should take into account the actual size of the fpc
+        image_disk_size = 4
 
         # set the size in GB, rounding up to the nearest int
         if 'size' in image_details:
@@ -173,10 +174,23 @@ def get_heat_json_from_topology_config(config, project_name='admin'):
         device_ram = int(device["ram"])
         device_cpu = int(device["cpu"])
 
+        # FIXME get_minimum_flavor should ignore the disk size if a volume is used
+        # Also ignore the disk size of a flavor if the min_disk is 0 (since its an ephemeral topology)
+        flavor_detail = None
+        required_disk = 0
+        if configuration.openstack_use_volumes:
+            # Using a volume
+            required_disk = 0
+        elif "min_disk" in image_details and image_details["min_disk"] == 0:
+            # Ephemeral, only using as much as the qcow2 images need
+            required_disk = 0
+        else:
+            required_disk = image_disk_size
+
         flavor_detail = openstackUtils.get_minimum_flavor_for_specs(configuration.openstack_project,
                                                                     device_cpu,
                                                                     device_ram,
-                                                                    image_disk_size
+                                                                    required_disk
                                                                     )
 
         flavor = flavor_detail["name"]
@@ -194,8 +208,26 @@ def get_heat_json_from_topology_config(config, project_name='admin'):
             index += 1
             dr["properties"]["networks"].append(port)
 
-        dr["properties"]["image"] = image_name
-        dr["properties"]["name"] = device["name"]
+        # When we don't want to use ephemeral node storage
+        # Create volume that the OS::Nova::Server instance depends on
+        # Don't create a volume if the min-disk for the image is 0
+        if configuration.openstack_use_volumes == False:
+            dr["properties"]["image"] = image_name
+        elif "min_disk" in image_details and image_details["min_disk"] == 0:
+            dr["properties"]["image"] = image_name
+        else:
+            # Create a volume resource
+            vr = {}
+            vr["type"] = "OS::Cinder::Volume"
+            vr["properties"] = {}
+            vr["properties"]["size"] = image_disk_size
+            vr_name = device["name"] + "_vol0"
+            vr["properties"]["image"] = image_name
+            template["resources"][vr_name] = vr
+
+            # Add the block device mapping
+            # vda as a device name should work for most devices
+            dr["properties"]["block_device_mapping"] = [{ "device_name": "vda", "volume_id"  : { "get_resource" : vr_name }, "delete_on_termination" : "true" }]
 
         if device["configDriveSupport"]:
             dr["properties"]["config_drive"] = True
@@ -740,20 +772,8 @@ def clone_topology(topology_json):
                 ud["ip"] = new_ip
 
                 # verify the correct image id and type - useful when importing from another source or wistar instance!
-                try:
-                    image = Image.objects.get(id=ud["image"])
-                    if image.type != ud["type"]:
-                        raise Image.DoesNotExist
-
-                except Image.DoesNotExist as dne:
-                    image_list = Image.objects.filter(type=ud["type"])
-                    if len(image_list) == 0:
-                        # nope, bail out and let the user know what happened!
-                        logger.error("Could not find image of type " + ud["type"])
-                    else:
-                        image = image_list[0]
-                        logger.debug("Updating image to corrected id of: %s " % str(image.id))
-                        json_object["userData"]["image"] = image.id
+                # This should theoretically always just return the same image, considering we're cloning
+                json_object["userData"]["image"] = get_same_or_similar_image(ud["image"], ud["type"])
 
                 # do not import configuration script information if the id does not exist here
                 # for non-local clone operations, this could pose a problem
@@ -767,6 +787,34 @@ def clone_topology(topology_json):
     except Exception as e:
         logger.debug(str(e))
         return None
+
+def get_same_or_similar_image(image_id, image_type):
+    """
+    Tries to find if the image id and type specified are actually 
+    correct for this Wistar install
+    If not, it returns the image of the same type that we do have
+    :param image_id: the id of the image
+    :param image_type: the type of the image
+    :returns: an image id or None if no matching image could be find
+    """
+    try:
+        image = Image.objects.get(id=image_id)
+        if image.type != image_type:
+            logger.debug("Not finding " + str(image_id) + " with type: " + str(image_type))
+            # We don't have this exact image requested
+            raise Image.DoesNotExist
+
+    except Image.DoesNotExist as dne:
+        # Trying to find a similar one
+        image_list = Image.objects.filter(type=image_type)
+        if len(image_list) == 0:
+            # nope, bail out and let the user know what happened!
+            return None
+        else:
+            image = image_list[0]
+            logger.debug("Updating image to corrected id of: %s " % str(image.id))
+    
+    return image.id
 
 
 def launch_web_socket(vnc_port, web_socket_port, server):

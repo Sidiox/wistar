@@ -88,6 +88,13 @@ openstack_region = "RegionOne"
 openstack_mgmt_network = 'wistar_mgmt'
 openstack_external_network = 'public-br-eth0'
 
+# OpenStack instances can be deployed to local storage on the compute nodes (default)
+# or to block storage volumes supplied by Cinder
+# This options dictates the backend used
+# False: local storage
+# True: block storage volumes
+openstack_use_volumes = False
+
 # Parameters for use with the VirtualBox deployment backend
 # Host only network name in VirtualBox
 virtual_box_host_only_net_name = 'vboxnet0'

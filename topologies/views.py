@@ -132,17 +132,19 @@ def import_topology(request):
                 if "userData" in json_object and "wistarVm" in json_object["userData"]:
                     # logger.debug("Found one")
                     ud = json_object["userData"]
-                    # check if we have this type of image
-                    image_list = Image.objects.filter(type=ud["type"])
-                    if len(image_list) == 0:
-                        # nope, bail out and let the user know what happened!
+
+                    # Tries to import with the same image index and type
+                    # If it doesn't exist, we'll use the closest type
+                    image_id = wistarUtils.get_same_or_similar_image(ud["image"], ud["type"])
+                    
+                    if image_id == None:
+                        # Failed to find the same image or even one with a similar type
                         logger.error("Could not find image of type " + ud["type"])
                         return error(request, 'Could not find a valid image of type ' + ud['type'] +
                                      '! Please upload an image of this type and try again')
-
-                    image = image_list[0]
-                    # logger.debug(str(image.id))
-                    json_object["userData"]["image"] = image.id
+                    else:
+                        # Either we found a suitable one or even the same one
+                        json_object["userData"]["image"] = image_id
 
                     valid_ip = wistarUtils.get_next_ip(currently_allocated_ips, next_ip_floor)
                     next_ip_floor = valid_ip
